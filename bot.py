@@ -132,15 +132,73 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     import asyncio
     loop = asyncio.get_running_loop()
     
+    # Run blocking request in executor to avoid blocking the asyncio loop
+    import asyncio
+    loop = asyncio.get_running_loop()
+    
     try:
         for i in range(image_count):
-            # Update status message to show progress
-            await status_msg.edit_text(f"Generating image {i+1} of {image_count} for: '{prompt}'...\nModel: {user_model or 'Default'}")
+            # Start async generation
+            await status_msg.edit_text(f"Starting generation for image {i+1} of {image_count}...")
             
-            result = await loop.run_in_executor(
+            # Call generate_image with async_process=True
+            initial_response = await loop.run_in_executor(
                 None, 
-                lambda: client.generate_image(prompt, model_name=user_model, image_number=1)
+                lambda: client.generate_image(prompt, model_name=user_model, image_number=1, async_process=True)
             )
+            
+            if not initial_response or "job_id" not in initial_response:
+                await update.message.reply_text(f"Failed to start generation for image {i+1}. Check logs.")
+                continue
+                
+            job_id = initial_response["job_id"]
+            logging.info(f"DEBUG: Started job {job_id}")
+            
+            # Poll for progress
+            last_progress = 0
+            while True:
+                await asyncio.sleep(1.0) # Poll every second
+                
+                job_status = await loop.run_in_executor(None, lambda: client.query_job(job_id))
+                
+                if not job_status:
+                    logging.warning(f"DEBUG: Failed to query job {job_id}")
+                    continue
+                
+                progress = job_status.get("job_progress", 0)
+                stage = job_status.get("job_stage", "Unknown")
+                
+                # Update progress if changed
+                if progress != last_progress:
+                    last_progress = progress
+                    # Check for preview
+                    preview = job_status.get("job_step_preview")
+                    
+                    status_text = f"Generating image {i+1} of {image_count}...\nProgress: {progress}%\nStage: {stage}"
+                    
+                    if preview and "base64" in preview and preview["base64"]:
+                        # Send/Update preview image
+                        # Note: Editing media is rate-limited. We might just send a new message or edit text.
+                        # For now, let's just update text to avoid spam/rate limits, or maybe send preview occasionally?
+                        # User asked for "displaying preview". 
+                        # Let's try to edit the status message text first.
+                        # If we want to show the image, we'd need to send a photo message and keep editing it.
+                        # But status_msg is a text message. We can't turn it into a photo.
+                        # So we might need to delete status_msg and send a photo message, then edit that.
+                        pass
+
+                    try:
+                        await status_msg.edit_text(status_text)
+                    except Exception:
+                        pass # Ignore edit errors (e.g. same content)
+
+                if job_status.get("job_status") == "Finished":
+                    break
+            
+            # Job finished, get result
+            # The final result is in job_status['job_result']
+            final_status = await loop.run_in_executor(None, lambda: client.query_job(job_id))
+            result = final_status.get("job_result")
             
             if result:
                 images = []

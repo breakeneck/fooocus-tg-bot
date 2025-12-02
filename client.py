@@ -24,7 +24,8 @@ class FooocusClient:
 
     def generate_image(self, prompt, model_name=None, negative_prompt="", style_selections=None, 
                        performance_selection="Speed", aspect_ratios_selection="1152*896", 
-                       image_number=1, image_seed=-1, sharpness=2.0, guidance_scale=4.0):
+                       image_number=1, image_seed=-1, sharpness=2.0, guidance_scale=4.0, 
+                       async_process=False):
         
         payload = {
             "prompt": prompt,
@@ -36,7 +37,7 @@ class FooocusClient:
             "image_seed": image_seed,
             "sharpness": sharpness,
             "guidance_scale": guidance_scale,
-            "async_process": False 
+            "async_process": async_process 
         }
 
         if model_name:
@@ -49,4 +50,15 @@ class FooocusClient:
             return response.json()
         except requests.RequestException as e:
             print(f"Error generating image: {e}")
+            return None
+
+    def query_job(self, job_id):
+        try:
+            response = requests.get(f"{self.base_url}/v1/generation/query-job", 
+                                    params={"job_id": job_id, "require_step_preview": True},
+                                    timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error querying job: {e}")
             return None
