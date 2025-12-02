@@ -44,10 +44,9 @@ async def models_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def model_selection_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    logging.info(f"DEBUG: Handler entered. Data: {query.data}") # Debug log
+    logging.info(f"DEBUG: Handler entered. Data: {query.data}")
     
     try:
-        # Always answer the query to stop the loading animation
         await query.answer()
         logging.info("DEBUG: Query answered")
 
@@ -57,20 +56,22 @@ async def model_selection_handler(update: Update, context: ContextTypes.DEFAULT_
                 index = int(data.split("model:", 1)[1])
                 logging.info(f"DEBUG: Parsed index: {index}")
                 
-                available_models = context.user_data.get("available_models", [])
-                logging.info(f"DEBUG: Available models in user_data: {available_models}")
+                # Stateless approach: Fetch models again to resolve index
+                # This avoids issues with user_data persistence
+                models = client.get_models()
+                logging.info(f"DEBUG: Fetched {len(models)} models")
                 
-                if 0 <= index < len(available_models):
-                    selected_model = available_models[index]
+                if 0 <= index < len(models):
+                    selected_model = models[index]
                     context.user_data["model"] = selected_model
                     logging.info(f"DEBUG: User selected model: {selected_model}")
                     await query.edit_message_text(text=f"Selected model: {selected_model}")
                     logging.info("DEBUG: Message edited successfully")
                 else:
-                    logging.warning("DEBUG: Index out of range or models empty")
-                    await query.edit_message_text(text="Error: Model selection expired or invalid. Please run /models again.")
+                    logging.warning("DEBUG: Index out of range")
+                    await query.edit_message_text(text="Error: Model selection invalid (list changed?). Please run /models again.")
             except (ValueError, IndexError) as e:
-                logging.error(f"DEBUG: Error parsing index: {e}")
+                logging.error(f"DEBUG: Error processing selection: {e}")
                 await query.edit_message_text(text="Error processing selection.")
     except Exception as e:
         logging.error(f"DEBUG: Unexpected error in handler: {e}")
@@ -187,6 +188,17 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     except Exception as e:
         await status_msg.edit_text(f"An error occurred: {str(e)}")
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logging.error(msg="Exception while handling an update:", exc_info=context.error)
+
+async def debug_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    logging.info(f"DEBUG: Catch-all callback handler. Data: {query.data}")
+    # We don't answer here, just log. The specific handler should answer.
+
+async def raw_update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logging.info(f"DEBUG: RAW UPDATE RECEIVED: {update}")
+
 if __name__ == '__main__':
     if not BOT_TOKEN:
         print("Error: BOT_TOKEN not found in .env or config.py")
@@ -194,11 +206,24 @@ if __name__ == '__main__':
 
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    application.add_error_handler(error_handler)
+    
+    # Log ALL updates before any other handler
+    from telegram.ext import TypeHandler
+    application.add_handler(TypeHandler(Update, raw_update_handler), group=-1)
+
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('models', models_command))
     application.add_handler(CommandHandler('generate', generate_command))
-    application.add_handler(CallbackQueryHandler(model_selection_handler))
+    
+    # Specific handler first
+    application.add_handler(CallbackQueryHandler(model_selection_handler, pattern="^model:"))
+    
+    # Catch-all for debugging (if the above doesn't match)
+    application.add_handler(CallbackQueryHandler(debug_callback_handler))
+    
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), text_handler))
 
     print("Bot is running...")
-    application.run_polling()
+    # Explicitly allow all updates to ensure we get callback queries
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
