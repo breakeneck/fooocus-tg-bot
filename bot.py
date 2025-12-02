@@ -44,38 +44,38 @@ async def models_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def model_selection_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    print(f"DEBUG: Handler entered. Data: {query.data}") # Debug log
+    logging.info(f"DEBUG: Handler entered. Data: {query.data}") # Debug log
     
     try:
         # Always answer the query to stop the loading animation
         await query.answer()
-        print("DEBUG: Query answered")
+        logging.info("DEBUG: Query answered")
 
         data = query.data
         if data.startswith("model:"):
             try:
                 index = int(data.split("model:", 1)[1])
-                print(f"DEBUG: Parsed index: {index}")
+                logging.info(f"DEBUG: Parsed index: {index}")
                 
                 available_models = context.user_data.get("available_models", [])
-                print(f"DEBUG: Available models in user_data: {available_models}")
+                logging.info(f"DEBUG: Available models in user_data: {available_models}")
                 
                 if 0 <= index < len(available_models):
                     selected_model = available_models[index]
                     context.user_data["model"] = selected_model
-                    print(f"DEBUG: User selected model: {selected_model}")
+                    logging.info(f"DEBUG: User selected model: {selected_model}")
                     await query.edit_message_text(text=f"Selected model: {selected_model}")
-                    print("DEBUG: Message edited successfully")
+                    logging.info("DEBUG: Message edited successfully")
                 else:
-                    print("DEBUG: Index out of range or models empty")
+                    logging.warning("DEBUG: Index out of range or models empty")
                     await query.edit_message_text(text="Error: Model selection expired or invalid. Please run /models again.")
             except (ValueError, IndexError) as e:
-                print(f"DEBUG: Error parsing index: {e}")
+                logging.error(f"DEBUG: Error parsing index: {e}")
                 await query.edit_message_text(text="Error processing selection.")
     except Exception as e:
-        print(f"DEBUG: Unexpected error in handler: {e}")
+        logging.error(f"DEBUG: Unexpected error in handler: {e}")
         import traceback
-        traceback.print_exc()
+        logging.error(traceback.format_exc())
 
 async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
