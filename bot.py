@@ -133,63 +133,50 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     loop = asyncio.get_running_loop()
     
     try:
-        result = await loop.run_in_executor(
-            None, 
-            lambda: client.generate_image(prompt, model_name=user_model, image_number=image_count)
-        )
+        for i in range(image_count):
+            # Update status message to show progress
+            await status_msg.edit_text(f"Generating image {i+1} of {image_count} for: '{prompt}'...\nModel: {user_model or 'Default'}")
+            
+            result = await loop.run_in_executor(
+                None, 
+                lambda: client.generate_image(prompt, model_name=user_model, image_number=1)
+            )
+            
+            if result:
+                images = []
+                if isinstance(result, list):
+                    images = result
+                elif isinstance(result, dict):
+                    images = [result]
+                
+                for img_data in images:
+                    if "base64" in img_data and img_data["base64"]:
+                        img_bytes = base64.b64decode(img_data["base64"])
+                        await update.message.reply_photo(photo=io.BytesIO(img_bytes))
+                    elif "url" in img_data and img_data["url"]:
+                        image_url = img_data["url"]
+                        try:
+                            from urllib.parse import urlparse, urljoin
+                            parsed_img_url = urlparse(image_url)
+                            parsed_base_url = urlparse(client.base_url)
+                            final_image_url = parsed_img_url._replace(netloc=parsed_base_url.netloc, scheme=parsed_base_url.scheme).geturl()
+                            
+                            logging.info(f"Downloading image from: {final_image_url}")
+                            
+                            import requests
+                            img_response = requests.get(final_image_url)
+                            img_response.raise_for_status()
+                            await update.message.reply_photo(photo=io.BytesIO(img_response.content))
+                        except Exception as e:
+                            logging.error(f"Failed to retrieve image: {e}")
+                            await update.message.reply_text(f"Failed to retrieve image from {image_url}: {e}")
+            else:
+                await update.message.reply_text(f"Generation failed for image {i+1}. Please check logs.")
         
-        if result:
-            # Fooocus API returns a list of results. We usually get one image.
-            # The result format from our client.generate_image (which calls text-to-image)
-            # returns a list of objects with 'base64' or 'url'.
-            
-            images = []
-            if isinstance(result, list):
-                images = result
-            elif isinstance(result, dict):
-                # It might be wrapped
-                images = [result]
-            
-            for img_data in images:
-                if "base64" in img_data and img_data["base64"]:
-                    img_bytes = base64.b64decode(img_data["base64"])
-                    await update.message.reply_photo(photo=io.BytesIO(img_bytes))
-                elif "url" in img_data and img_data["url"]:
-                    # Telegram cannot access localhost URLs, so we must download it first
-                    image_url = img_data["url"]
-                    try:
-                        # Use requests to download the image content
-                        # We can use the client.base_url to ensure we are hitting the right host if the URL is relative, 
-                        # but Fooocus usually returns absolute URLs like http://127.0.0.1:8888/files/...
-                        
-                        # Fix: Replace the host/port in the returned URL with our configured BASE_URL
-                        # This handles cases where Fooocus returns 127.0.0.1 but we are connecting via localhost (IPv6/v4 differences)
-                        # or if we are connecting via a different IP/tunnel.
-                        from urllib.parse import urlparse, urljoin
-                        
-                        # Parse the returned URL
-                        parsed_img_url = urlparse(image_url)
-                        # Parse our configured base URL
-                        parsed_base_url = urlparse(client.base_url)
-                        
-                        # Construct new URL with configured netloc (host:port)
-                        # Keep the path from the image URL
-                        final_image_url = parsed_img_url._replace(netloc=parsed_base_url.netloc, scheme=parsed_base_url.scheme).geturl()
-                        
-                        print(f"Downloading image from: {final_image_url}") # Debug log
-                        
-                        import requests
-                        img_response = requests.get(final_image_url)
-                        img_response.raise_for_status()
-                        await update.message.reply_photo(photo=io.BytesIO(img_response.content))
-                    except Exception as e:
-                        await update.message.reply_text(f"Failed to retrieve image from {image_url} (tried {final_image_url if 'final_image_url' in locals() else 'N/A'}): {e}")
-            
-            await status_msg.delete()
-        else:
-            await status_msg.edit_text("Generation failed. Please check the API logs.")
+        await status_msg.delete()
             
     except Exception as e:
+        logging.error(f"Error during generation: {e}")
         await status_msg.edit_text(f"An error occurred: {str(e)}")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -219,6 +206,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('models', models_command))
     application.add_handler(CommandHandler('image_count', image_count_command))
+    application.add_handler(CommandHandler('images_count', image_count_command)) # Alias
     application.add_handler(CommandHandler('generate', generate_command))
     
     # Specific handler first
