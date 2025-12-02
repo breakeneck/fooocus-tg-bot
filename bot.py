@@ -90,54 +90,58 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text
     await generate_image(update, context, prompt)
 
+async def image_count_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = []
+    # Create rows of 5 buttons
+    row = []
+    for i in range(1, 11):
+        row.append(InlineKeyboardButton(str(i), callback_data=f"img_count:{i}"))
+        if len(row) == 5:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Select number of images to generate:", reply_markup=reply_markup)
+
+async def image_count_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    logging.info(f"DEBUG: Image count handler. Data: {query.data}")
+    
+    try:
+        await query.answer()
+        data = query.data
+        if data.startswith("img_count:"):
+            count = int(data.split("img_count:", 1)[1])
+            context.user_data["image_count"] = count
+            logging.info(f"DEBUG: User selected image count: {count}")
+            await query.edit_message_text(text=f"Selected image count: {count}")
+    except Exception as e:
+        logging.error(f"DEBUG: Error in image count handler: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
 async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str):
     user_model = context.user_data.get("model")
-    status_msg = await update.message.reply_text(f"Generating image for: '{prompt}'...\nModel: {user_model or 'Default'}")
+    image_count = context.user_data.get("image_count", 1)
+    
+    status_msg = await update.message.reply_text(f"Generating {image_count} image(s) for: '{prompt}'...\nModel: {user_model or 'Default'}")
 
     # Run blocking request in executor to avoid blocking the asyncio loop
-    # Although requests is blocking, for a simple bot this might be okay, 
-    # but strictly speaking we should run it in a separate thread.
-    # Since we are using python-telegram-bot which is async, we should be careful.
-    # However, for this MVP, we'll call it directly but acknowledge it blocks.
-    # To do it properly:
-    # loop = asyncio.get_running_loop()
-    # result = await loop.run_in_executor(None, lambda: client.generate_image(...))
-    
-    # For simplicity in this step, we will just call it. 
-    # If the generation takes a long time, the bot might stop responding to pings if we don't use run_in_executor.
-    # Let's use run_in_executor for better practice.
     import asyncio
     loop = asyncio.get_running_loop()
     
     try:
         result = await loop.run_in_executor(
             None, 
-            lambda: client.generate_image(prompt, model_name=user_model)
+            lambda: client.generate_image(prompt, model_name=user_model, image_number=image_count)
         )
         
         if result:
             # Fooocus API returns a list of results. We usually get one image.
             # The result format from our client.generate_image (which calls text-to-image)
             # returns a list of objects with 'base64' or 'url'.
-            # Wait, the API docs say text-to-image returns a list of results?
-            # Let's check the API docs again. 
-            # The docs say:
-            # [
-            #   {
-            #     "base64": "...",
-            #     "url": "...",
-            #     "seed": ...,
-            #     "finish_reason": "SUCCESS"
-            #   }
-            # ]
-            # Actually the docs example shows a list in `job_result` for query-job, 
-            # but for synchronous `text-to-image`, it returns the list directly?
-            # Let's assume it returns a list of dicts based on common patterns, 
-            # but if it returns a single dict, we handle that too.
-            
-            # Based on docs position 2: "This interface returns a universal response structure, refer to [response](#response)"
-            # And position 16 (which we didn't read fully but saw the title) likely describes it.
-            # Usually it's a list of generated items.
             
             images = []
             if isinstance(result, list):
@@ -214,10 +218,12 @@ if __name__ == '__main__':
 
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('models', models_command))
+    application.add_handler(CommandHandler('image_count', image_count_command))
     application.add_handler(CommandHandler('generate', generate_command))
     
     # Specific handler first
     application.add_handler(CallbackQueryHandler(model_selection_handler, pattern="^model:"))
+    application.add_handler(CallbackQueryHandler(image_count_handler, pattern="^img_count:"))
     
     # Catch-all for debugging (if the above doesn't match)
     application.add_handler(CallbackQueryHandler(debug_callback_handler))
