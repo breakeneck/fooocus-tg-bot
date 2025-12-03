@@ -122,6 +122,11 @@ async def image_count_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         import traceback
         logging.error(traceback.format_exc())
 
+def get_progress_bar(percentage, length=20):
+    filled_length = int(length * percentage // 100)
+    bar = '█' * filled_length + '░' * (length - filled_length)
+    return f"[{bar}] {percentage}%"
+
 async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str):
     user_model = context.user_data.get("model")
     image_count = context.user_data.get("image_count", 1)
@@ -132,14 +137,18 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     import asyncio
     loop = asyncio.get_running_loop()
     
-    # Run blocking request in executor to avoid blocking the asyncio loop
-    import asyncio
-    loop = asyncio.get_running_loop()
     
+    generated_images = []
+    last_media_group_ids = []
+
     try:
         for i in range(image_count):
             # Start async generation
-            await status_msg.edit_text(f"Starting generation for image {i+1} of {image_count}...")
+            current_status_text = f"Starting generation for image {i+1} of {image_count}..."
+            if status_msg.photo:
+                 await status_msg.edit_caption(caption=current_status_text)
+            else:
+                 await status_msg.edit_text(current_status_text)
             
             # Call generate_image with async_process=True
             initial_response = await loop.run_in_executor(
@@ -174,23 +183,47 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
                     # Check for preview
                     preview = job_status.get("job_step_preview")
                     
-                    status_text = f"Generating image {i+1} of {image_count}...\nProgress: {progress}%\nStage: {stage}"
+                    progress_bar = get_progress_bar(progress)
+                    status_text = f"Generating image {i+1} of {image_count}...\n{progress_bar}\nStage: {stage}"
                     
                     if preview and "base64" in preview and preview["base64"]:
-                        # Send/Update preview image
-                        # Note: Editing media is rate-limited. We might just send a new message or edit text.
-                        # For now, let's just update text to avoid spam/rate limits, or maybe send preview occasionally?
-                        # User asked for "displaying preview". 
-                        # Let's try to edit the status message text first.
-                        # If we want to show the image, we'd need to send a photo message and keep editing it.
-                        # But status_msg is a text message. We can't turn it into a photo.
-                        # So we might need to delete status_msg and send a photo message, then edit that.
-                        pass
+                        preview_bytes = base64.b64decode(preview["base64"])
+                        
+                        # If status_msg is text, delete it and send photo
+                        if not status_msg.photo:
+                            await status_msg.delete()
+                            status_msg = await update.message.reply_photo(
+                                photo=io.BytesIO(preview_bytes),
+                                caption=status_text
+                            )
+                        else:
+                            # Update existing photo message
+                            # Telegram requires InputMediaPhoto for editing media
+                            from telegram import InputMediaPhoto
+                            try:
+                                await status_msg.edit_media(
+                                    media=InputMediaPhoto(media=io.BytesIO(preview_bytes), caption=status_text)
+                                )
+                            except Exception as e:
+                                logging.warning(f"Failed to edit media (rate limit?): {e}")
+                                # Fallback: just edit caption if media edit fails
+                                try:
+                                    await status_msg.edit_caption(caption=status_text)
+                                except Exception:
+                                    pass
 
-                    try:
-                        await status_msg.edit_text(status_text)
-                    except Exception:
-                        pass # Ignore edit errors (e.g. same content)
+                    else:
+                        # No preview available yet or anymore
+                        if status_msg.photo:
+                            try:
+                                await status_msg.edit_caption(caption=status_text)
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                await status_msg.edit_text(status_text)
+                            except Exception:
+                                pass # Ignore edit errors (e.g. same content)
 
                 if job_status.get("job_status") == "Finished":
                     break
@@ -200,17 +233,20 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
             final_status = await loop.run_in_executor(None, lambda: client.query_job(job_id))
             result = final_status.get("job_result")
             
+            new_image_bytes = None
             if result:
-                images = []
+                images_data = []
                 if isinstance(result, list):
-                    images = result
+                    images_data = result
                 elif isinstance(result, dict):
-                    images = [result]
+                    images_data = [result]
                 
-                for img_data in images:
+                # We expect one image per generation call here because we loop image_count times
+                # But just in case, take the last one if multiple are returned (though unlikely with image_number=1)
+                for img_data in images_data:
                     if "base64" in img_data and img_data["base64"]:
                         img_bytes = base64.b64decode(img_data["base64"])
-                        await update.message.reply_photo(photo=io.BytesIO(img_bytes))
+                        new_image_bytes = io.BytesIO(img_bytes)
                     elif "url" in img_data and img_data["url"]:
                         image_url = img_data["url"]
                         try:
@@ -224,18 +260,65 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
                             import requests
                             img_response = requests.get(final_image_url)
                             img_response.raise_for_status()
-                            await update.message.reply_photo(photo=io.BytesIO(img_response.content))
+                            new_image_bytes = io.BytesIO(img_response.content)
                         except Exception as e:
                             logging.error(f"Failed to retrieve image: {e}")
                             await update.message.reply_text(f"Failed to retrieve image from {image_url}: {e}")
             else:
                 await update.message.reply_text(f"Generation failed for image {i+1}. Please check logs.")
-        
+
+            # If we got a new image, update the media group
+            if new_image_bytes:
+                from telegram import InputMediaPhoto
+                
+                # If there was a previous media group message, delete it
+                if last_media_group_ids:
+                     for msg_id in last_media_group_ids:
+                         try:
+                            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+                         except Exception as e:
+                            logging.warning(f"Failed to delete previous media group message {msg_id}: {e}")
+                     last_media_group_ids = []
+
+                # Prepare media group
+                media_group = []
+                
+                # Add existing images using file_id
+                for img_info in generated_images:
+                    if 'file_id' in img_info:
+                        media_group.append(InputMediaPhoto(media=img_info['file_id']))
+                
+                # Add new image using bytes
+                media_group.append(InputMediaPhoto(media=new_image_bytes))
+                
+                # Send new media group
+                try:
+                    msgs = await update.message.reply_media_group(media=media_group)
+                    
+                    # The last message in the group corresponds to the last image we sent (the new one)
+                    # We need to save its file_id for the next iteration
+                    if msgs:
+                        new_msg = msgs[-1]
+                        # Get the largest photo size
+                        new_file_id = new_msg.photo[-1].file_id
+                        
+                        generated_images.append({'file_id': new_file_id})
+                        
+                        # Store message IDs to delete next time
+                        last_media_group_ids = [m.message_id for m in msgs]
+                        
+                except Exception as e:
+                    logging.error(f"Failed to send media group: {e}")
+                    await update.message.reply_text(f"Error sending image: {e}")
+
+        # Cleanup status message
         await status_msg.delete()
             
     except Exception as e:
         logging.error(f"Error during generation: {e}")
-        await status_msg.edit_text(f"An error occurred: {str(e)}")
+        # If status_msg was deleted or invalid, we might not be able to edit it.
+        # Try to send a new error message.
+        await update.message.reply_text(f"An error occurred: {str(e)}")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logging.error(msg="Exception while handling an update:", exc_info=context.error)
