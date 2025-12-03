@@ -67,10 +67,30 @@ async def model_selection_handler(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         logging.error(f"DEBUG: Unexpected error in handler: {e}")
 
+def is_english_prompt(text: str) -> bool:
+    """Check if text contains primarily English characters (ASCII + common punctuation)"""
+    if not text:
+        return False
+    
+    # Count non-ASCII characters (excluding common punctuation and numbers)
+    non_ascii_count = sum(1 for char in text if ord(char) > 127)
+    total_chars = len(text.replace(' ', ''))  # Exclude spaces from count
+    
+    # Allow up to 10% non-ASCII characters (for emojis, special chars)
+    if total_chars == 0:
+        return False
+    
+    non_ascii_ratio = non_ascii_count / total_chars
+    return non_ascii_ratio < 0.1
+
 async def raw_generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt:
         await update.message.reply_text("Please provide a prompt. Usage: /raw <prompt>")
+        return
+    
+    if not is_english_prompt(prompt):
+        await update.message.reply_text("⚠️ Please use English language only for prompts.")
         return
     
     await generate_image(update, context, prompt, use_safety_filter=False)
@@ -81,10 +101,19 @@ async def pure_generate_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("Please provide a prompt. Usage: /pure <prompt>")
         return
     
+    if not is_english_prompt(prompt):
+        await update.message.reply_text("⚠️ Please use English language only for prompts.")
+        return
+    
     await generate_image(update, context, prompt, use_safety_filter='pure')
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text
+    
+    if not is_english_prompt(prompt):
+        await update.message.reply_text("⚠️ Please use English language only for prompts.")
+        return
+    
     await generate_image(update, context, prompt, use_safety_filter=True)
 
 async def image_count_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
