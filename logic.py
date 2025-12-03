@@ -3,6 +3,7 @@ import base64
 import io
 import asyncio
 from client import FooocusClient
+from config import SAFETY_POSITIVE_PROMPT, SAFETY_NEGATIVE_PROMPT
 
 class FooocusLogic:
     def __init__(self):
@@ -49,12 +50,26 @@ class FooocusLogic:
         bar = '█' * filled_length + '░' * (length - filled_length)
         return f"[{bar}] {percentage}%"
 
-    async def generate_image_stream(self, prompt, model_name, image_count):
+    async def generate_image_stream(self, prompt, model_name, image_count, use_safety_filter=True):
         """
         Async generator that yields updates during image generation.
         Yields dicts with type: 'status', 'preview', 'image', 'error'
+        
+        Args:
+            prompt: User's image generation prompt
+            model_name: Selected model name
+            image_count: Number of images to generate
+            use_safety_filter: If True, automatically append safety prompts (default: True)
         """
         loop = asyncio.get_running_loop()
+        
+        # Apply safety filters if enabled
+        final_prompt = prompt
+        final_negative_prompt = ""
+        
+        if use_safety_filter:
+            final_prompt = f"{prompt}, {SAFETY_POSITIVE_PROMPT}"
+            final_negative_prompt = SAFETY_NEGATIVE_PROMPT
 
         for i in range(image_count):
             yield {
@@ -67,7 +82,13 @@ class FooocusLogic:
             # Start generation
             initial_response = await loop.run_in_executor(
                 None, 
-                lambda: self.client.generate_image(prompt, model_name=model_name, image_number=1, async_process=True)
+                lambda: self.client.generate_image(
+                    final_prompt, 
+                    model_name=model_name, 
+                    negative_prompt=final_negative_prompt,
+                    image_number=1, 
+                    async_process=True
+                )
             )
 
             if not initial_response or "job_id" not in initial_response:

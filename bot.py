@@ -16,7 +16,16 @@ logging.basicConfig(
 logic = FooocusLogic()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(logic.get_welcome_message())
+    welcome_message = (
+        "Welcome to the Fooocus AI Bot!\\n\\n"
+        "Commands:\\n"
+        "/models - Select a base model\\n"
+        "/image_count - Select number of images to generate\\n"
+        "/generate <prompt> - Generate an image (with safety filters)\\n"
+        "/raw <prompt> - Generate an image without safety filters\\n"
+        "Or simply send a text message to generate an image."
+    )
+    await update.message.reply_text(welcome_message)
 
 async def models_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     models_data = logic.get_models_keyboard_data()
@@ -64,11 +73,19 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please provide a prompt. Usage: /generate <prompt>")
         return
     
-    await generate_image(update, context, prompt)
+    await generate_image(update, context, prompt, use_safety_filter=True)
+
+async def raw_generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+    if not prompt:
+        await update.message.reply_text("Please provide a prompt. Usage: /raw <prompt>")
+        return
+    
+    await generate_image(update, context, prompt, use_safety_filter=False)
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text
-    await generate_image(update, context, prompt)
+    await generate_image(update, context, prompt, use_safety_filter=True)
 
 async def image_count_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard_data = logic.get_image_count_keyboard_data()
@@ -93,14 +110,15 @@ async def image_count_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logging.error(f"DEBUG: Error in image count handler: {e}")
 
-async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str):
+async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str, use_safety_filter: bool = True):
     user_model = context.user_data.get("model")
     image_count = context.user_data.get("image_count", 1)
     
-    status_msg = await update.message.reply_text(f"Generating {image_count} image(s) for: '{prompt}'...\nModel: {user_model or 'Default'}")
+    safety_status = "with safety filters" if use_safety_filter else "without safety filters (raw mode)"
+    status_msg = await update.message.reply_text(f"Generating {image_count} image(s) for: '{prompt}'...\nModel: {user_model or 'Default'}\nMode: {safety_status}")
 
     try:
-        async for event in logic.generate_image_stream(prompt, user_model, image_count):
+        async for event in logic.generate_image_stream(prompt, user_model, image_count, use_safety_filter):
             if event["type"] == "status":
                 if status_msg.photo:
                      await status_msg.edit_caption(caption=event["text"])
@@ -187,6 +205,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('image_count', image_count_command))
     application.add_handler(CommandHandler('images_count', image_count_command))
     application.add_handler(CommandHandler('generate', generate_command))
+    application.add_handler(CommandHandler('raw', raw_generate_command))
     
     application.add_handler(CallbackQueryHandler(model_selection_handler, pattern="^model:"))
     application.add_handler(CallbackQueryHandler(image_count_handler, pattern="^img_count:"))
