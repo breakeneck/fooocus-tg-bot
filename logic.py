@@ -170,7 +170,8 @@ class FooocusLogic:
                         yield {
                             "type": "image", 
                             "data": img_bytes,
-                            "prompt": prompt,  # Original user prompt
+                            "prompt": final_prompt,  # Full prompt with safety filters
+                            "negative_prompt": final_negative_prompt,  # Full negative prompt
                             "model_name": model_name
                         }
             else:

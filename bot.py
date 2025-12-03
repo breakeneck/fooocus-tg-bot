@@ -169,14 +169,19 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
 
             elif event["type"] == "image":
                 try:
-                    # Create caption with prompt and model name
-                    caption = event.get("prompt", prompt)
+                    # Create caption with full prompt, negative prompt, and model name
+                    full_prompt = event.get("prompt", prompt)
+                    negative_prompt = event.get("negative_prompt", "")
                     model_name = event.get("model_name") or user_model or "Default"
-                    full_caption = f"{caption} [{model_name}]"
+                    
+                    # Build caption
+                    caption = f"{full_prompt}\n\n[{model_name}]"
+                    if negative_prompt:
+                        caption += f"\n\nNegative: {negative_prompt}"
                     
                     await update.message.reply_photo(
                         photo=io.BytesIO(event["data"]),
-                        caption=full_caption
+                        caption=caption
                     )
                 except Exception as e:
                     logging.error(f"Failed to send image: {e}")
