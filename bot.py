@@ -17,13 +17,12 @@ logic = FooocusLogic()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
-        "Welcome to the Fooocus AI Bot!\\n\\n"
-        "Commands:\\n"
-        "/models - Select a base model\\n"
-        "/image_count - Select number of images to generate\\n"
-        "/generate <prompt> - Generate an image (with safety filters)\\n"
-        "/raw <prompt> - Generate an image without safety filters\\n"
-        "Or simply send a text message to generate an image."
+        "Welcome to the Fooocus AI Bot!\n\n"
+        "Commands:\n"
+        "/models - Select a base model\n"
+        "/image_count - Select number of images to generate\n"
+        "/raw <prompt> - Generate an image without safety filters\n\n"
+        "Or simply send a text message to generate an image with safety filters."
     )
     await update.message.reply_text(welcome_message)
 
@@ -66,14 +65,6 @@ async def model_selection_handler(update: Update, context: ContextTypes.DEFAULT_
                 await query.edit_message_text(text="Error processing selection.")
     except Exception as e:
         logging.error(f"DEBUG: Unexpected error in handler: {e}")
-
-async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    prompt = " ".join(context.args)
-    if not prompt:
-        await update.message.reply_text("Please provide a prompt. Usage: /generate <prompt>")
-        return
-    
-    await generate_image(update, context, prompt, use_safety_filter=True)
 
 async def raw_generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
@@ -204,7 +195,6 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('models', models_command))
     application.add_handler(CommandHandler('image_count', image_count_command))
     application.add_handler(CommandHandler('images_count', image_count_command))
-    application.add_handler(CommandHandler('generate', generate_command))
     application.add_handler(CommandHandler('raw', raw_generate_command))
     
     application.add_handler(CallbackQueryHandler(model_selection_handler, pattern="^model:"))
