@@ -59,17 +59,22 @@ class FooocusLogic:
             prompt: User's image generation prompt
             model_name: Selected model name
             image_count: Number of images to generate
-            use_safety_filter: If True, automatically append safety prompts (default: True)
+            use_safety_filter: If True, add full safety prompts; if 'pure', add only positive prompt; if False, no filters
         """
         loop = asyncio.get_running_loop()
         
-        # Apply safety filters if enabled
+        # Apply safety filters based on mode
         final_prompt = prompt
         final_negative_prompt = ""
         
-        if use_safety_filter:
+        if use_safety_filter == True:
+            # Full safety mode: positive + negative prompts
             final_prompt = f"{prompt}, {SAFETY_POSITIVE_PROMPT}"
             final_negative_prompt = SAFETY_NEGATIVE_PROMPT
+        elif use_safety_filter == 'pure':
+            # Pure mode: only positive prompt, no negative
+            final_prompt = f"{prompt}, {SAFETY_POSITIVE_PROMPT}"
+            final_negative_prompt = ""
 
         for i in range(image_count):
             yield {
@@ -162,6 +167,11 @@ class FooocusLogic:
                             yield {"type": "error", "message": f"Failed to retrieve image from URL: {e}"}
                     
                     if img_bytes:
-                        yield {"type": "image", "data": img_bytes}
+                        yield {
+                            "type": "image", 
+                            "data": img_bytes,
+                            "prompt": prompt,  # Original user prompt
+                            "model_name": model_name
+                        }
             else:
                 yield {"type": "error", "message": f"Generation failed for image {i+1}."}

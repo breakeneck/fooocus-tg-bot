@@ -21,8 +21,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Commands:\n"
         "/models - Select a base model\n"
         "/image_count - Select number of images to generate\n"
-        "/raw <prompt> - Generate an image without safety filters\n\n"
-        "Or simply send a text message to generate an image with safety filters."
+        "/pure <prompt> - Generate with only positive safety filter\n"
+        "/raw <prompt> - Generate without any safety filters\n\n"
+        "Or simply send a text message to generate an image with full safety filters."
     )
     await update.message.reply_text(welcome_message)
 
@@ -74,6 +75,14 @@ async def raw_generate_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await generate_image(update, context, prompt, use_safety_filter=False)
 
+async def pure_generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+    if not prompt:
+        await update.message.reply_text("Please provide a prompt. Usage: /pure <prompt>")
+        return
+    
+    await generate_image(update, context, prompt, use_safety_filter='pure')
+
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text
     await generate_image(update, context, prompt, use_safety_filter=True)
@@ -105,7 +114,13 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     user_model = context.user_data.get("model")
     image_count = context.user_data.get("image_count", 1)
     
-    safety_status = "with safety filters" if use_safety_filter else "without safety filters (raw mode)"
+    if use_safety_filter == 'pure':
+        safety_status = "with positive safety filter only"
+    elif use_safety_filter == True:
+        safety_status = "with full safety filters"
+    else:
+        safety_status = "without safety filters (raw mode)"
+    
     status_msg = await update.message.reply_text(f"Generating {image_count} image(s) for: '{prompt}'...\nModel: {user_model or 'Default'}\nMode: {safety_status}")
 
     try:
@@ -154,7 +169,15 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
 
             elif event["type"] == "image":
                 try:
-                    await update.message.reply_photo(photo=io.BytesIO(event["data"]))
+                    # Create caption with prompt and model name
+                    caption = event.get("prompt", prompt)
+                    model_name = event.get("model_name") or user_model or "Default"
+                    full_caption = f"{caption} [{model_name}]"
+                    
+                    await update.message.reply_photo(
+                        photo=io.BytesIO(event["data"]),
+                        caption=full_caption
+                    )
                 except Exception as e:
                     logging.error(f"Failed to send image: {e}")
                     await update.message.reply_text(f"Error sending image: {e}")
@@ -195,6 +218,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('models', models_command))
     application.add_handler(CommandHandler('image_count', image_count_command))
     application.add_handler(CommandHandler('images_count', image_count_command))
+    application.add_handler(CommandHandler('pure', pure_generate_command))
     application.add_handler(CommandHandler('raw', raw_generate_command))
     
     application.add_handler(CallbackQueryHandler(model_selection_handler, pattern="^model:"))
