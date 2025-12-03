@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Fooocus API service
+  fooocus-api:
+    image: konieshadow/fooocus-api:latest
+    container_name: fooocus-api
+    ports:
+      - "8888:8888"
+    volumes:
+      # Persist models and outputs
+      - fooocus-models:/app/repositories/Fooocus/models
+      - fooocus-outputs:/app/repositories/Fooocus/outputs
+    environment:
+      # Run without web UI
+      - CMDARGS=--listen 0.0.0.0 --port 8888
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Telegram Bot service
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fooocus-telegram-bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - FOOOCUS_IP=fooocus-api
+      - FOOOCUS_PORT=8888
+    depends_on:
+      fooocus-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - default
+
+volumes:
+  fooocus-models:
+  fooocus-outputs:
+
+networks:
+  default:
+    driver: bridge
