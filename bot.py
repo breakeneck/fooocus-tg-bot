@@ -4,7 +4,7 @@ import base64
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
-from config import BOT_TOKEN
+from config import FOOOCUS_BOT_TOKEN
 from logic import FooocusLogic
 
 # Enable logging
@@ -171,11 +171,11 @@ async def raw_update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     logging.info(f"DEBUG: RAW UPDATE RECEIVED: {update}")
 
 if __name__ == '__main__':
-    if not BOT_TOKEN:
-        print("Error: BOT_TOKEN not found in .env or config.py")
+    if not FOOOCUS_BOT_TOKEN:
+        print("Error: FOOOCUS_BOT_TOKEN not found in .env or config.py")
         exit(1)
 
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application = ApplicationBuilder().token(FOOOCUS_BOT_TOKEN).build()
 
     application.add_error_handler(error_handler)
     

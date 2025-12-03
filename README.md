@@ -39,7 +39,7 @@ A Telegram bot interface for [Fooocus](https://github.com/lllyasviel/Fooocus) (v
         ```bash
         cp .env.example .env
         ```
-    *   Edit `.env` and add your `BOT_TOKEN`.
+    *   Edit `.env` and add your `FOOOCUS_BOT_TOKEN`.
     *   Adjust `FOOOCUS_IP` and `FOOOCUS_PORT` if your API is not running on `127.0.0.1:8888`.
 
 ## Usage

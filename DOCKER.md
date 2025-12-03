@@ -29,7 +29,7 @@ sudo systemctl restart docker
 1. **Set up your environment variables**:
    ```bash
    cp .env.example .env
-   nano .env  # Edit and add your BOT_TOKEN
+   nano .env  # Edit and add your FOOOCUS_BOT_TOKEN
    ```
 
 2. **Start the services** (with GPU):
@@ -61,7 +61,7 @@ sudo systemctl restart docker
 Edit your `.env` file:
 
 ```env
-BOT_TOKEN=your_telegram_bot_token_here
+FOOOCUS_BOT_TOKEN=your_telegram_bot_token_here
 ```
 
 The `FOOOCUS_IP` and `FOOOCUS_PORT` are automatically configured in the docker-compose.yml to use the service name `fooocus-api`.
