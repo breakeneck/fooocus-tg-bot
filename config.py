@@ -10,6 +10,6 @@ FOOOCUS_PORT = os.getenv("FOOOCUS_PORT", "8888")
 BASE_URL = f"http://{FOOOCUS_IP}:{FOOOCUS_PORT}"
 
 # Safety prompts for content filtering
-SAFETY_POSITIVE_PROMPT = "safe, wholesome, family friendly, SFW only, strictly no nudity, no nsfw, no erotic content, no sensuality, no sexual themes, fully covered body, modest attire, non-revealing clothing, non-suggestive poses, avoid cleavage, avoid exposed skin"
+SAFETY_POSITIVE_PROMPT = "underage is forbidden, adult only, fully clothed adult woman, strictly no nudity, strictly no exposed skin, no cleavage, no lingerie, no underwear, no erotic expression, no sensuality, no sexual themes, no sexual gestures, professional portrait style, modest outfit, conservative clothing, safe for work, family-safe realistic photography"
 
-SAFETY_NEGATIVE_PROMPT = "nsfw, nudity, naked, erotic, sexual, pornographic, suggestive, revealing clothes, lingerie, swimwear, cleavage, exposed breasts, exposed body, sexual pose, vulgar, explicit content, adult content"
+SAFETY_NEGATIVE_PROMPT = "nsfw, nude, naked, topless, bottomless, nipples, breasts, exposed skin, erotic, sensual, seductive, sexual position, sexual act, porn, pornographic, hentai, explicit content, genitalia, vagina, penis, oral, intercourse, sex, sexual organ, fetish, bdsm, lingerie, swimsuit, bikini, cleavage, revealing clothes, suggestive pose"
