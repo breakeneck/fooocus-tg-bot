@@ -139,7 +139,6 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     
     
     generated_images = []
-    last_media_group_ids = []
 
     try:
         for i in range(image_count):
@@ -267,48 +266,12 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
             else:
                 await update.message.reply_text(f"Generation failed for image {i+1}. Please check logs.")
 
-            # If we got a new image, update the media group
+            # If we got a new image, send it
             if new_image_bytes:
-                from telegram import InputMediaPhoto
-                
-                # If there was a previous media group message, delete it
-                if last_media_group_ids:
-                     for msg_id in last_media_group_ids:
-                         try:
-                            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
-                         except Exception as e:
-                            logging.warning(f"Failed to delete previous media group message {msg_id}: {e}")
-                     last_media_group_ids = []
-
-                # Prepare media group
-                media_group = []
-                
-                # Add existing images using file_id
-                for img_info in generated_images:
-                    if 'file_id' in img_info:
-                        media_group.append(InputMediaPhoto(media=img_info['file_id']))
-                
-                # Add new image using bytes
-                media_group.append(InputMediaPhoto(media=new_image_bytes))
-                
-                # Send new media group
                 try:
-                    msgs = await update.message.reply_media_group(media=media_group)
-                    
-                    # The last message in the group corresponds to the last image we sent (the new one)
-                    # We need to save its file_id for the next iteration
-                    if msgs:
-                        new_msg = msgs[-1]
-                        # Get the largest photo size
-                        new_file_id = new_msg.photo[-1].file_id
-                        
-                        generated_images.append({'file_id': new_file_id})
-                        
-                        # Store message IDs to delete next time
-                        last_media_group_ids = [m.message_id for m in msgs]
-                        
+                    await update.message.reply_photo(photo=new_image_bytes)
                 except Exception as e:
-                    logging.error(f"Failed to send media group: {e}")
+                    logging.error(f"Failed to send image: {e}")
                     await update.message.reply_text(f"Error sending image: {e}")
 
         # Cleanup status message
